@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Calculadora de Devolução - Padrão Brasileiro (vUnTrib)</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: #eceff1;
+        padding: 20px;
+        color: #37474f;
+      }
+      .app-container {
+        max-width: 1100px;
+        margin: auto;
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #1565c0;
+        text-align: center;
+        border-bottom: 3px solid #1565c0;
+        padding-bottom: 10px;
+      }
+
+      .upload-section {
+        background: #f1f8e9;
+        border: 2px dashed #8bc34a;
+        padding: 20px;
+        text-align: center;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+
+      .search-section {
+        background: #e3f2fd;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #bbdefb;
+        margin-bottom: 20px;
+      }
+      .grid-inputs {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 15px;
+        align-items: flex-end;
+      }
+
+      .conversion-box {
+        background: #fff3e0;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #ffe0b2;
+        margin-top: 15px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+      .conversion-box input[type="checkbox"] {
+        transform: scale(1.5);
+      }
+
+      input[type="text"],
+      input[type="number"] {
+        padding: 10px;
+        border: 1px solid #cfd8dc;
+        border-radius: 5px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      button {
+        padding: 12px 25px;
+        background: #1565c0;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        width: 100%;
+      }
+      button:hover {
+        background: #0d47a1;
+      }
+
+      .report-section {
+        margin-top: 20px;
+        border: 1px solid #cfd8dc;
+        border-radius: 8px;
+        padding: 20px;
+        background: #fafafa;
+      }
+      .sub-title {
+        background: #455a64;
+        color: white;
+        padding: 8px 15px;
+        border-radius: 4px;
+        margin-top: 20px;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 0.85em;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+        background: white;
+      }
+      th,
+      td {
+        border: 1px solid #cfd8dc;
+        padding: 10px;
+        text-align: left;
+        font-size: 0.9em;
+      }
+      th {
+        background: #f5f5f5;
+      }
+
+      .math-box {
+        font-family: "Consolas", monospace;
+        background: #fff9c4;
+        padding: 3px 6px;
+        border-radius: 3px;
+        font-size: 0.85em;
+        border: 1px solid #fbc02d;
+      }
+      .row-liquid {
+        background: #e1f5fe;
+        font-weight: bold;
+      }
+      .highlight-text {
+        color: #d32f2f;
+        font-weight: bold;
+      }
+      .icms-proporcional {
+        background: #fff3e0;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #ffe0b2;
+        margin: 15px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-container">
+      <h1>Conferência e Devolução (Decimal com Vírgula)</h1>
+
+      <div class="upload-section">
+        <strong>1. Selecione o arquivo XML da NF-e original:</strong
+        ><br /><br />
+        <input type="file" id="xmlFile" accept=".xml" />
+      </div>
+
+      <div id="controls" class="search-section" style="display: none">
+        <div class="grid-inputs">
+          <div>
+            <label><strong>Cód. Produto (cProd):</strong></label>
+            <input type="text" id="prodCode" placeholder="Ex: 832" />
+          </div>
+          <div>
+            <label><strong>Qtd. para Devolução:</strong></label>
+            <input type="number" id="retQty" placeholder="Ex: 10" />
+          </div>
+          <button onclick="gerarRelatorio()">Gerar Relatório Técnico</button>
+        </div>
+
+        <div class="conversion-box">
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              cursor: pointer;
+            "
+          >
+            <input type="checkbox" id="useConversion" />
+            <strong>Habilitar Conversão (Caixa para Unidade)</strong>
+          </label>
+          <div
+            id="factorDiv"
+            style="display: none; align-items: center; gap: 10px"
+          >
+            <span>| Itens por Caixa:</span>
+            <input
+              type="number"
+              id="convFactor"
+              value="12"
+              style="width: 80px"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div id="relatorio" style="display: none"></div>
+    </div>
+
+    <script>
+      let nfeData = [];
+
+      // Função auxiliar para formatar números no padrão PT-BR
+      function f(valor, casas = 2) {
+        return valor.toLocaleString("pt-br", {
+          minimumFractionDigits: casas,
+          maximumFractionDigits: casas,
+        });
+      }
+
+      document
+        .getElementById("useConversion")
+        .addEventListener("change", function () {
+          document.getElementById("factorDiv").style.display = this.checked
+            ? "flex"
+            : "none";
+        });
+
+      document
+        .getElementById("xmlFile")
+        .addEventListener("change", function (e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(e.target.result, "text/xml");
+            processarXML(xml);
+          };
+          reader.readAsText(file);
+        });
+
+      function processarXML(xml) {
+        const itens = xml.getElementsByTagName("det");
+        nfeData = [];
+        for (let i = 0; i < itens.length; i++) {
+          const prod = itens[i].getElementsByTagName("prod")[0];
+          const imp = itens[i].getElementsByTagName("imposto")[0];
+          const icmsTag = imp.getElementsByTagName("ICMS")[0].children[0];
+
+          nfeData.push({
+            cProd: prod.getElementsByTagName("cProd")[0].textContent,
+            xProd: prod.getElementsByTagName("xProd")[0].textContent,
+            uCom: prod.getElementsByTagName("uCom")[0].textContent,
+            qCom: parseFloat(prod.getElementsByTagName("qCom")[0].textContent),
+            vUnTrib: parseFloat(
+              prod.getElementsByTagName("vUnTrib")[0].textContent,
+            ),
+            vProdTotal: parseFloat(
+              prod.getElementsByTagName("vProd")[0].textContent,
+            ),
+            vDesc: parseFloat(
+              prod.getElementsByTagName("vDesc")[0]?.textContent || 0,
+            ),
+            vDeson: parseFloat(
+              imp.getElementsByTagName("vICMSDeson")[0]?.textContent || 0,
+            ),
+            vBC_ICMS: parseFloat(
+              icmsTag.getElementsByTagName("vBC")[0]?.textContent || 0,
+            ),
+            pICMS: parseFloat(
+              icmsTag.getElementsByTagName("pICMS")[0]?.textContent || 0,
+            ),
+            pCBS: parseFloat(
+              imp.getElementsByTagName("pAliqEfetRegCBS")[0]?.textContent || 0,
+            ),
+            pIBS: parseFloat(
+              imp.getElementsByTagName("pAliqEfetRegIBSUF")[0]?.textContent ||
+                0,
+            ),
+          });
+        }
+        document.getElementById("controls").style.display = "block";
+        alert("XML Carregado com sucesso!");
+      }
+
+      function gerarRelatorio() {
+        const code = document.getElementById("prodCode").value;
+        const qty = parseFloat(document.getElementById("retQty").value);
+        const item = nfeData.find((p) => p.cProd === code);
+        const isConverted = document.getElementById("useConversion").checked;
+        const factor =
+          parseFloat(document.getElementById("convFactor").value) || 1;
+
+        if (!item) return alert("Produto não encontrado!");
+        if (isNaN(qty)) return alert("Informe a quantidade!");
+
+        // Lógica de cálculo unitário
+        const divisor = isConverted ? factor : 1;
+        const workingUnTrib = item.vUnTrib / divisor;
+        const workingUDesc = item.vDesc / item.qCom / divisor;
+        const workingUDeson = item.vDeson / item.qCom / divisor;
+        const workingUBC_ICMS = item.vBC_ICMS / item.qCom / divisor;
+
+        // Proporcionais
+        const propBruto = workingUnTrib * qty;
+        const propAbatimento = (workingUDesc + workingUDeson) * qty;
+        const propLiq = propBruto - propAbatimento;
+        const propBC_ICMS = workingUBC_ICMS * qty;
+        const propValICMS = propBC_ICMS * (item.pICMS / 100);
+
+        // Reforma
+        const vCBS = propLiq * (item.pCBS / 100);
+        const vIBS = propLiq * (item.pIBS / 100);
+
+        const rel = document.getElementById("relatorio");
+        rel.style.display = "block";
+        rel.innerHTML = `
+            <div class="report-section">
+                <div class="sub-title">1. Identificação do Produto</div>
+                <p><strong>Descrição:</strong> ${item.xProd} (Cód: ${item.cProd})</p>
+                <p><strong>Modo:</strong> ${isConverted ? '<span class="highlight-text">CONVERSÃO ATIVA (' + factor + " un/cx)</span>" : "CÁLCULO DIRETO"}</p>
+
+                <div class="sub-title">2. Valores Unitários (Base de Cálculo)</div>
+                <table>
+                    <tr>
+                        <th>vUnTrib (Bruto)</th>
+                        <th>Abatimento Unit.</th>
+                        <th>Base ICMS Unit.</th>
+                        <th>Alíquota ICMS</th>
+                    </tr>
+                    <tr>
+                        <td>R$ ${f(workingUnTrib, 4)}</td>
+                        <td>R$ ${f(workingUDesc + workingUDeson, 4)}</td>
+                        <td>R$ ${f(workingUBC_ICMS, 4)}</td>
+                        <td>${f(item.pICMS, 2)}%</td>
+                    </tr>
+                </table>
+
+                <div class="sub-title" style="background:#c62828">3. Cálculo Proporcional Devolução (${f(qty, 0)} itens)</div>
+                <table>
+                    <tr><th>Descrição</th><th>Valor (R$)</th><th>Memória de Cálculo</th></tr>
+                    <tr>
+                        <td>Valor Bruto Total</td>
+                        <td style="color:green">+ ${f(propBruto)}</td>
+                        <td><span class="math-box">${f(workingUnTrib, 4)} * ${qty}</span></td>
+                    </tr>
+                    <tr>
+                        <td>(-) Descontos Totais</td>
+                        <td style="color:red">- ${f(propAbatimento)}</td>
+                        <td><span class="math-box">${f(workingUDesc + workingUDeson, 4)} * ${qty}</span></td>
+                    </tr>
+                    <tr class="row-liquid">
+                        <td>(=) Valor Líquido Final</td>
+                        <td>R$ ${f(propLiq)}</td>
+                        <td>Base para Tributos e Nota</td>
+                    </tr>
+                </table>
+
+                <div class="icms-proporcional">
+                    <strong>DADOS PARA NOTA DE DEVOLUÇÃO (ICMS):</strong><br>
+                    Base de Cálculo ICMS: R$ ${f(propBC_ICMS)} | Valor do ICMS: <strong>R$ ${f(propValICMS)}</strong>
+                </div>
+
+                <div class="sub-title">4. Reforma Tributária (IBS / CBS)</div>
+                <p><strong>CBS (${f(item.pCBS, 2)}%):</strong> R$ ${f(vCBS)} <span class="math-box">${f(propLiq)} * ${f(item.pCBS / 100, 4)}</span></p>
+                <p><strong>IBS (${f(item.pIBS, 2)}%):</strong> R$ ${f(vIBS)} <span class="math-box">${f(propLiq)} * ${f(item.pIBS / 100, 4)}</span></p>
+            </div>
+        `;
+      }
+    </script>
+  </body>
+</html>
