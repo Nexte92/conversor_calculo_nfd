@@ -165,6 +165,7 @@
       .flag-cfop { background: #c8e6c9; color: #1b5e20; }
       .flag-cst { background: #ffcc80; color: #e65100; }
       .flag-bc { background: #b2dfdb; color: #004d40; }
+      .flag-icms { background: #80cbc4; color: #004d40; }
       .flag-ucom { background: #dcedc8; color: #33691e; }
       .flag-redbc { background: #ffeb3b; color: #212121; }
       .flag-desp { background: #ffe0b2; color: #e65100; }
@@ -233,28 +234,28 @@
           </div>
           <div>
             <label>Qtd. a Devolver (Unidades):</label>
-            <input type="text" id="retQty" placeholder="Ex: 5 ou 2,5" />
+            <input type="text" id="retQty" placeholder="Ex: 5" />
           </div>
           <button onclick="adicionarProduto()">➕ Adicionar ao Relatório</button>
         </div>
 
         <div class="conversion-box">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0;">
-            <input type="checkbox" id="useConversion" />
-            Habilitar Conversão / Fracionamento (Para Caixas ou KG)
+            <input type="checkbox" id="useConversion" onchange="toggleConversion()" />
+            Habilitar Conversão Específica (Caixa ➔ UN ou Quilo ➔ UN)
           </label>
           
           <div id="factorDiv" style="display: none; align-items: center; gap: 15px; margin-top: 12px; width: 100%; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 300px;">
-                <label style="font-size: 0.8em; color: #e65100;">Regra de Conversão:</label>
-                <select id="convType" style="border-color: #ffb74d;">
-                    <option value="MULTIPLY">1. Fracionar Embalagem (Ex: Multiplicar CX da nota por 12)</option>
-                    <option value="REPLACE">2. Informar Total Físico (Ex: Substituir 18 KG por 30 UN)</option>
+                <label style="font-size: 0.8em; color: #e65100;">Selecione a Regra:</label>
+                <select id="convType" style="border-color: #ffb74d;" onchange="updateConvLabel()">
+                    <option value="CX_TO_UN">1. Fracionar CAIXA (Multiplicar CX da nota)</option>
+                    <option value="KG_TO_UN">2. Material em QUILO (Dividir vProd pela Qtd. Física)</option>
                 </select>
             </div>
             <div>
-                <label style="font-size: 0.8em; color: #e65100;">Quantidade Final:</label>
-                <input type="number" id="convFactor" value="12" style="width: 120px; border-color: #ffb74d;" />
+                <label id="lblConvFactor" style="font-size: 0.8em; color: #e65100;">Itens por Caixa:</label>
+                <input type="number" id="convFactor" value="12" style="width: 180px; border-color: #ffb74d;" />
             </div>
           </div>
         </div>
@@ -270,7 +271,7 @@
       let nfeData = [];
       let relatorioItens = [];
 
-      // Extratores Seguros
+      // Funções Seguras de Extração
       function getNum(parent, tag) {
           if (!parent) return 0;
           const el = parent.getElementsByTagName(tag)[0];
@@ -282,14 +283,34 @@
           return el && el.textContent ? el.textContent : def;
       }
 
-      // Formatador Seguro
+      // Formatador
       function f(valor, casas = 2) {
         return Number(valor || 0).toLocaleString("pt-br", { minimumFractionDigits: casas, maximumFractionDigits: casas });
       }
 
-      document.getElementById("useConversion").addEventListener("change", function () {
-        document.getElementById("factorDiv").style.display = this.checked ? "flex" : "none";
-      });
+      // UX da Conversão
+      function toggleConversion() {
+        const isChecked = document.getElementById("useConversion").checked;
+        document.getElementById("factorDiv").style.display = isChecked ? "flex" : "none";
+        updateConvLabel(); // Atualiza a label sempre que abrir
+      }
+
+      function updateConvLabel() {
+          const type = document.getElementById("convType").value;
+          const lbl = document.getElementById("lblConvFactor");
+          const input = document.getElementById("convFactor");
+          
+          if(type === 'CX_TO_UN') {
+              lbl.innerText = "Itens por Caixa (Qtd):";
+              input.placeholder = "Ex: 12";
+              if(!input.value) input.value = "12";
+          } else {
+              // Dinâmica para a regra do KG via MB51
+              lbl.innerText = "Qtd. Total UN (MB51):";
+              input.placeholder = "Ex: 30";
+              input.value = ""; // Limpa para forçar o usuário a preencher a MB51
+          }
+      }
 
       // Leitura de Arquivo
       document.getElementById("xmlFile").addEventListener("change", function (e) {
@@ -326,10 +347,10 @@
           let cst = "N/A";
           let pRedBC = 0;
           let vBC_ICMS = 0;
+          let vICMS = 0;
           let pICMS = 0;
           let vICMSST = 0;
 
-          // Busca Segura do ICMS
           const icmsNode = imp ? imp.getElementsByTagName("ICMS")[0] : null;
           if (icmsNode && icmsNode.children.length > 0) {
               const icmsTag = icmsNode.children[0];
@@ -337,19 +358,16 @@
               if (cst === "N/A") cst = getStr(icmsTag, "CSOSN");
               pRedBC = getNum(icmsTag, "pRedBC");
               vBC_ICMS = getNum(icmsTag, "vBC");
+              vICMS = getNum(icmsTag, "vICMS");
               pICMS = getNum(icmsTag, "pICMS");
-              
-              // Extração do ST (Substituição Tributária)
               vICMSST = getNum(icmsTag, "vICMSST");
           }
 
-          // Busca Segura Despesas
           const vOutro = getNum(prod, "vOutro");
           const vFrete = getNum(prod, "vFrete");
           const vSeg = getNum(prod, "vSeg");
           const vDespAces = vOutro + vFrete + vSeg;
 
-          // Busca Segura IBS/CBS
           let vBC_IBSCBS = 0;
           const ibsCbsTag = imp ? imp.getElementsByTagName("gIBSCBS")[0] : null;
           if (ibsCbsTag) vBC_IBSCBS = getNum(ibsCbsTag, "vBC");
@@ -373,8 +391,9 @@
             vDesc: getNum(prod, "vDesc"),
             vDeson: imp ? getNum(imp, "vICMSDeson") : 0,
             vDespAces: vDespAces,
-            vICMSST: vICMSST, // ICMS-ST salvo no objeto
+            vICMSST: vICMSST, 
             vBC_ICMS: vBC_ICMS,
+            vICMS: vICMS, 
             vBC_IBSCBS: vBC_IBSCBS,
             pICMS: pICMS,
             pCBS: pCBS,
@@ -397,39 +416,46 @@
             const item = nfeData.find(p => String(p.cProd).trim() === rawCode || Number(p.cProd) === Number(rawCode));
             
             if (!item) return alert(`Produto com código '${rawCode}' não foi encontrado neste XML!`);
-            if (isNaN(qty) || qty <= 0) return alert("Informe uma quantidade válida e maior que zero!");
+            if (isNaN(qty) || qty <= 0) return alert("Informe uma quantidade válida a devolver!");
 
             const isConverted = document.getElementById("useConversion").checked;
             const convType = document.getElementById("convType").value;
-            const factor = parseFloat(document.getElementById("convFactor").value) || 1;
+            const factor = parseFloat(document.getElementById("convFactor").value);
 
             let totalUnits = item.qCom; 
+            
             if (isConverted) {
-                if (convType === "MULTIPLY") {
+                if (isNaN(factor) || factor <= 0) {
+                    return alert("Você habilitou a conversão! Informe a Quantidade/Fator correspondente.");
+                }
+                
+                if (convType === "CX_TO_UN") {
+                    // Regra: Multiplica as caixas pela quantidade de itens em cada caixa
                     totalUnits = item.qCom * factor;
-                } else if (convType === "REPLACE") {
+                } else if (convType === "KG_TO_UN") {
+                    // REGRA MB51: Ignora os KG do XML e divide tudo pelas unidades informadas pelo usuário
                     totalUnits = factor;
                 }
             }
 
             if (totalUnits === 0) totalUnits = 1; 
 
-            // Rateios Unitários (Dividindo o Total da Nota pela Qtd Física)
+            // ================= LÓGICA MESTRA =================
+            // O Rateio Financeiro agora é preciso baseando-se no 'totalUnits' determinado acima
             const workingUnCom = item.vProdTotal / totalUnits;
             const workingUDesc = item.vDesc / totalUnits;
             const workingUDeson = item.vDeson / totalUnits;
             const workingUDespAces = item.vDespAces / totalUnits;
-            const workingUST = item.vICMSST / totalUnits; // ST Unitário
+            const workingUST = item.vICMSST / totalUnits; 
             const workingUBC_ICMS = item.vBC_ICMS / totalUnits;
             const workingUBC_IBSCBS = item.vBC_IBSCBS / totalUnits;
 
-            // Multiplicadores (Proporção da Devolução)
+            // Multiplicando as unidades a devolver (qty) pelos valores unitários fatiados
             const propBruto = workingUnCom * qty;
             const propAbatimento = (workingUDesc + workingUDeson) * qty;
             const propDespAces = workingUDespAces * qty;
-            const propST = workingUST * qty; // ST da Devolução
+            const propST = workingUST * qty; 
             
-            // Valor Líquido Final com ST somado para ressarcimento
             const propLiq = propBruto + propDespAces + propST - propAbatimento;
 
             const propBC_ICMS = workingUBC_ICMS * qty;
@@ -448,12 +474,18 @@
               propBC_ICMS, propValICMS, propBC_IBSCBS, vCBS, vIBS
             });
 
+            // Reset inputs após sucesso
             document.getElementById("prodCode").value = "";
             document.getElementById("retQty").value = "";
+            
+            // Se estava convertendo KG, zera a quantidade MB51 por segurança
+            if(isConverted && convType === "KG_TO_UN") {
+                document.getElementById("convFactor").value = "";
+            }
+            
             document.getElementById("prodCode").focus();
 
             atualizarTela();
-            
             setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 100);
 
         } catch (err) {
@@ -507,10 +539,10 @@
 
           let msgConversao = '';
           if (isConverted) {
-              if (convType === 'MULTIPLY') {
-                  msgConversao = `<div style="color:var(--danger); font-weight:bold; font-size:0.85em; margin-bottom:15px;">⚠️ CONVERSÃO ATIVA (Fracionamento: 1 ${item.uCom} original = ${factor} UN)</div>`;
+              if (convType === 'CX_TO_UN') {
+                  msgConversao = `<div style="color:var(--danger); font-weight:bold; font-size:0.85em; margin-bottom:15px; background: #ffebee; padding: 10px; border-radius: 5px;">⚠️ CONVERSÃO CAIXA APLICADA: Foram rateadas ${item.qCom} ${item.uCom}(s) multiplicadas por ${factor}, gerando ${totalUnits} Unidades totais para base.</div>`;
               } else {
-                  msgConversao = `<div style="color:var(--danger); font-weight:bold; font-size:0.85em; margin-bottom:15px;">⚠️ CONVERSÃO ATIVA (Substituição para Físico: Linha de faturamento convertida para ${factor} UN totais)</div>`;
+                  msgConversao = `<div style="color:var(--danger); font-weight:bold; font-size:0.85em; margin-bottom:15px; background: #fff3e0; padding: 10px; border-radius: 5px;">⚠️ RATEIO POR QUILO (MB51): O Faturamento original em ${item.uCom} foi ignorado. Todos os totais (R$ ${f(item.vProdTotal)}) foram divididos diretamente por ${factor} UN (Total registrado na MB51).</div>`;
               }
           }
 
@@ -526,10 +558,11 @@
                     <span class="flag flag-nfe">NF-e: ${item.nNF} / Série: ${item.serie}</span>
                     <span class="flag flag-uf">UF Emitente: ${item.emitUF}</span>
                     <span class="flag flag-ean">EAN: ${item.ean}</span>
-                    <span class="flag flag-ucom">Unidade Orig.: ${item.uCom}</span>
+                    <span class="flag flag-ucom">Unidade Faturada (XML): ${item.uCom}</span>
                     <span class="flag flag-cfop">CFOP: ${item.cfop}</span>
                     <span class="flag flag-cst">CST: ${item.cst}</span>
-                    <span class="flag flag-bc">Base ICMS (XML): R$ ${f(item.vBC_ICMS)}</span>
+                    <span class="flag flag-bc">Base ICMS Total (XML): R$ ${f(item.vBC_ICMS)}</span>
+                    <span class="flag flag-icms">Valor ICMS Total (XML): R$ ${f(item.vICMS)}</span>
                     ${flagReducaoHTML}
                     ${flagDespHTML}
                     ${flagSTHTML}
@@ -537,7 +570,7 @@
 
                 ${msgConversao}
 
-                <div class="sub-title">Valores Unitários ${isConverted ? '(Rateados por Unidade Física)' : '(Base Comercial)'}</div>
+                <div class="sub-title">Valores Unitários ${isConverted ? '(Taxas e Custos de 1 UNIDADE)' : '(Base Comercial)'}</div>
                 <div style="overflow-x:auto;">
                   <table>
                       <tr>
